@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MathSolver</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/12.4.2/math.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<style>
+  :root {
+    --bg:      #0a0c0f;
+    --surface: #0f1215;
+    --panel:   #141820;
+    --border:  #1e2530;
+    --accent:  #00e5ff;
+    --accent2: #7fff6e;
+    --warn:    #ff6b35;
+    --text:    #c8d8e8;
+    --muted:   #4a5568;
+    --correct: #00e87a;
+    --stage1:  #f59e0b;
+    --stage2:  #00e5ff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'JetBrains Mono', monospace; min-height: 100vh; }
+  body::before {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(rgba(0,229,255,0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(0,229,255,0.02) 1px, transparent 1px);
+    background-size: 40px 40px; pointer-events: none; z-index: 0;
+  }
+  .shell { position: relative; z-index: 1; max-width: 920px; margin: 0 auto; padding: 32px 24px; }
+
+  header { display: flex; align-items: center; gap: 16px; margin-bottom: 32px; border-bottom: 1px solid var(--border); padding-bottom: 24px; }
+  .logo { width: 46px; height: 46px; border: 2px solid var(--accent); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 24px; animation: glow 3s ease-in-out infinite; }
+  @keyframes glow { 0%,100%{box-shadow:0 0 14px rgba(0,229,255,.2)} 50%{box-shadow:0 0 28px rgba(0,229,255,.4)} }
+  .header-text h1 { font-family:'Space Mono',monospace; font-size:20px; font-weight:700; color:#fff; }
+  .header-text p { font-size:11px; color:var(--muted); letter-spacing:2px; text-transform:uppercase; margin-top:3px; }
+  .ollama-pill { margin-left:auto; padding:6px 14px; border-radius:20px; font-size:11px; letter-spacing:1.5px; font-weight:600; border:1px solid; cursor:pointer; transition:all .2s; }
+  .ollama-pill.online  { color:var(--accent2); border-color:var(--accent2); }
+  .ollama-pill.offline { color:var(--warn); border-color:var(--warn); }
+  .ollama-pill.unknown { color:var(--muted); border-color:var(--muted); }
+
+  /* PIPELINE DIAGRAM */
+  .pipeline {
+    display: flex; align-items: center; gap: 0;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    padding: 16px 20px; margin-bottom: 20px; overflow-x: auto;
+  }
+  .pipe-stage {
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    min-width: 120px; padding: 10px 14px; border-radius: 8px; flex-shrink: 0;
+  }
+  .pipe-stage.s1 { background: rgba(245,158,11,.08); border: 1px solid rgba(245,158,11,.25); }
+  .pipe-stage.s2 { background: rgba(0,229,255,.06); border: 1px solid rgba(0,229,255,.2); }
+  .pipe-stage.s3 { background: rgba(127,255,110,.06); border: 1px solid rgba(127,255,110,.2); }
+  .pipe-stage .icon { font-size: 22px; }
+  .pipe-stage .name { font-size: 11px; font-weight: 700; letter-spacing: 1px; }
+  .pipe-stage .desc { font-size: 10px; color: var(--muted); text-align: center; }
+  .pipe-stage.s1 .name { color: var(--stage1); }
+  .pipe-stage.s2 .name { color: var(--stage2); }
+  .pipe-stage.s3 .name { color: var(--accent2); }
+  .pipe-arrow { font-size: 18px; color: var(--muted); padding: 0 8px; flex-shrink: 0; }
+
+  .section { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 20px; }
+  .sh { display:flex; align-items:center; gap:10px; margin-bottom:16px; }
+  .sn { width:26px; height:26px; border-radius:6px; background:var(--accent); color:#000; font-size:12px; font-weight:700; display:flex; align-items:center; justify-content:center; }
+  .st { font-size:13px; font-weight:600; color:#fff; }
+  .lbl { font-size:11px; color:var(--muted); letter-spacing:1.5px; text-transform:uppercase; margin-bottom:8px; }
+
+  select, input[type="text"] {
+    background: var(--panel); border: 1px solid var(--border); color: var(--text);
+    font-family:'JetBrains Mono',monospace; font-size:13px; border-radius:8px; padding:10px 14px;
+    outline:none; width:100%; transition: border-color .2s;
+  }
+  select:focus, input:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(0,229,255,.1); }
+  textarea {
+    background:var(--panel); border:1px solid var(--border); color:var(--text);
+    font-family:'JetBrains Mono',monospace; font-size:13px; border-radius:8px;
+    padding:10px 14px; outline:none; resize:vertical; min-height:120px; width:100%; line-height:1.6;
+  }
+  textarea:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(0,229,255,.1); }
+
+  .row2 { display:flex; gap:12px; }
+  .row2>div { flex:1; }
+
+  .btn { padding:11px 24px; border-radius:8px; border:none; font-family:'Space Mono',monospace; font-size:12px; font-weight:700; cursor:pointer; letter-spacing:1px; transition:all .2s; }
+  .btn-primary { background:var(--accent); color:#000; width:100%; margin-top:14px; }
+  .btn-primary:hover { background:#33ecff; box-shadow:0 0 20px rgba(0,229,255,.35); transform:translateY(-1px); }
+  .btn-primary:active { transform:translateY(0); }
+  .btn-primary:disabled { background:var(--muted); cursor:not-allowed; transform:none; box-shadow:none; }
+
+  /* PROGRESS STAGES */
+  .progress-stages { display:none; margin-top:14px; }
+  .progress-stages.active { display:flex; flex-direction:column; gap:8px; }
+  .prog-row { display:flex; align-items:center; gap:10px; font-size:12px; padding:10px 14px; border-radius:8px; background:var(--panel); border:1px solid var(--border); transition:all .3s; }
+  .prog-row.running { border-color:var(--accent); }
+  .prog-row.done    { border-color:var(--accent2); color:var(--accent2); }
+  .prog-row.error   { border-color:var(--warn); color:var(--warn); }
+  .prog-icon { font-size:16px; min-width:20px; }
+  .spinner { width:16px; height:16px; border:2px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin .6s linear infinite; }
+  @keyframes spin { to{transform:rotate(360deg)} }
+
+  /* CODE SNIPPET */
+  .code-snippet { background:#050708; border:1px solid var(--border); border-radius:8px; padding:14px; font-size:11px; color:var(--accent); overflow-x:auto; white-space:pre; line-height:1.6; cursor:pointer; position:relative; }
+  .code-snippet:hover { border-color:var(--accent); }
+  .copy-hint { position:absolute; top:8px; right:10px; font-size:10px; color:var(--muted); }
+
+  /* RESULT */
+  #result { display:none; animation:fadeUp .3s ease; }
+  @keyframes fadeUp { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+
+  .answer-card { background:linear-gradient(135deg,rgba(0,229,255,.05),rgba(127,255,110,.04)); border:1px solid rgba(0,229,255,.2); border-radius:12px; padding:22px; margin-bottom:16px; }
+  .answer-lbl { font-size:10px; color:var(--accent); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px; }
+  .answer-val { font-family:'Space Mono',monospace; font-size:30px; font-weight:700; color:var(--accent2); text-shadow:0 0 18px rgba(127,255,110,.35); word-break:break-all; }
+
+  .two-col { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:16px; }
+  @media(max-width:600px){ .two-col{grid-template-columns:1fr;} }
+
+  .info-card { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:16px; }
+  .info-card h3 { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:2px; margin-bottom:12px; }
+  .info-row { font-size:12px; line-height:1.7; color:var(--text); }
+  .tag { display:inline-block; background:rgba(0,229,255,.1); color:var(--accent); border:1px solid rgba(0,229,255,.2); border-radius:4px; padding:1px 7px; font-size:11px; font-weight:600; }
+
+  .step { display:flex; gap:10px; margin-bottom:9px; font-size:12px; line-height:1.6; }
+  .step-n { min-width:22px; height:22px; border-radius:4px; background:var(--border); color:var(--accent); font-size:10px; display:flex; align-items:center; justify-content:center; margin-top:1px; font-weight:700; }
+
+  .options-grid { display:flex; flex-direction:column; gap:8px; }
+  .opt { display:flex; align-items:center; gap:12px; padding:11px 15px; background:var(--panel); border:1px solid var(--border); border-radius:8px; font-size:13px; transition:all .2s; }
+  .opt.match { background:rgba(0,232,122,.08); border-color:var(--correct); color:var(--correct); box-shadow:0 0 10px rgba(0,232,122,.1); }
+  .opt-i { width:24px; height:24px; border-radius:50%; background:var(--border); display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; flex-shrink:0; }
+  .opt.match .opt-i { background:var(--correct); color:#000; }
+  .checkmark { margin-left:auto; }
+
+  .expr-box { background:#050708; border:1px solid var(--border); border-radius:8px; padding:12px 14px; font-size:12px; color:var(--stage1); font-family:'JetBrains Mono',monospace; word-break:break-all; line-height:1.6; }
+
+  .error-box { background:rgba(255,107,53,.07); border:1px solid rgba(255,107,53,.3); border-radius:8px; padding:14px; color:var(--warn); font-size:12px; line-height:1.7; }
+  .info-note { background:rgba(0,229,255,.05); border:1px solid rgba(0,229,255,.15); border-radius:8px; padding:10px 14px; font-size:11px; color:var(--muted); margin-top:10px; line-height:1.7; }
+
+  footer { text-align:center; margin-top:40px; font-size:10px; color:var(--muted); letter-spacing:1px; }
+
+  /* KaTeX overrides for dark theme */
+  .katex { color: var(--accent2); font-size: 1.1em; }
+  .katex-display { color: var(--accent2); margin: 0; }
+  .answer-val .katex { font-size: 2.2em; }
+  .answer-val .katex-display { display: inline; }
+  .opt-math .katex { color: inherit; font-size: 1em; }
+  .expr-box .katex { color: var(--stage1); font-size: 1em; }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <header>
+    <div class="logo">∑</div>
+    <div class="header-text">
+      <h1>MATHSOLVER</h1>
+      <p>AI Parses · Math Engine Computes</p>
+    </div>
+    <div class="ollama-pill unknown" id="ollamaPill" onclick="checkOllama(true)">⬤ CHECKING…</div>
+  </header>
+
+  <!-- PIPELINE DIAGRAM -->
+  <div class="pipeline">
+    <div class="pipe-stage s1">
+      <div class="icon">🧠</div>
+      <div class="name">OLLAMA</div>
+      <div class="desc">Reads problem<br>extracts expression</div>
+    </div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-stage s2">
+      <div class="icon">⚙️</div>
+      <div class="name">MATH.JS</div>
+      <div class="desc">Deterministic<br>CAS engine</div>
+    </div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-stage s3">
+      <div class="icon">✓</div>
+      <div class="name">ANSWER</div>
+      <div class="desc">Match against<br>options</div>
+    </div>
+  </div>
+
+  <!-- STEP 1: MODEL -->
+  <div class="section">
+    <div class="sh"><div class="sn">1</div><div class="st">Ollama Model</div></div>
+    <div class="row2">
+      <div>
+        <div class="lbl">Installed Models</div>
+        <select id="modelSelect"><option value="">— checking ollama —</option></select>
+      </div>
+      <div>
+        <div class="lbl">Custom Override</div>
+        <input type="text" id="customModel" placeholder="e.g. qwen2.5-math:7b">
+      </div>
+    </div>
+    <div class="info-note">
+      Recommended: <strong style="color:var(--accent)">qwen2.5-math:7b</strong> or <strong style="color:var(--accent)">qwen2.5-math:1.5b</strong> — purpose-built for math parsing.<br>
+      Pull with: <code style="color:var(--accent2)">ollama pull qwen2.5-math:7b</code>
+    </div>
+    <div id="ollamaOffline" style="display:none" class="error-box" style="margin-top:10px;">
+      Ollama offline. Run: <code>sudo systemctl stop ollama &amp;&amp; OLLAMA_ORIGINS=* ollama serve &amp;</code><br>
+      Then serve this file: <code>python -m http.server 3000</code> and open via http://localhost:3000
+    </div>
+  </div>
+
+  <!-- STEP 2: EXTRACTION -->
+  <div class="section">
+    <div class="sh"><div class="sn">2</div><div class="st">Extract From MathU</div></div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.7;">
+      On MathU: <strong style="color:var(--accent)">F12</strong> → Console → paste &amp; run → copy the JSON printed.
+    </div>
+    <div class="code-snippet" onclick="copySnippet(this)">
+<span class="copy-hint" id="copyHint">CLICK TO COPY</span>(function(){
+  var iframe=document.querySelector("iframe");
+  if(!iframe){return console.error("No iframe found");}
+  var doc=iframe.contentDocument;
+
+  // Replace all MathJax SVG spans with their LaTeX source text
+  // so innerText picks up the actual numbers/expressions
+  function getTextWithMath(el){
+    var clone=el.cloneNode(true);
+    var mathSpans=[].slice.call(clone.querySelectorAll(".MathJax_SVG"));
+    mathSpans.forEach(function(span){
+      var id=span.id; // e.g. MathJax-Element-97-Frame
+      if(!id) return;
+      var num=id.match(/MathJax-Element-(\d+)-Frame/);
+      if(!num) return;
+      var src=clone.querySelector("script[id='MathJax-Element-"+num[1]+"']");
+      if(src){
+        var t=doc.createTextNode(" "+src.textContent.trim()+" ");
+        span.parentNode.replaceChild(t,span);
+      }
+    });
+    return clone.innerText.trim();
+  }
+
+  // Get question text (exclude the options area)
+  var questionEl=doc.querySelector(".column-scrollable") || doc.body;
+  var questionText=getTextWithMath(questionEl);
+
+  // Extract the main LaTeX expression (first non-trivial one, not a single digit)
+  var allLatex=[].slice.call(doc.querySelectorAll("script[type='math/tex']"))
+    .map(function(n){return n.textContent.trim();})
+    .filter(function(s){return s.length>1 && !/^\d+$/.test(s);});
+  var mainLatex=allLatex[0]||'';
+
+  // Get options with proper text including MathJax numbers
+  var options=[].slice.call(doc.querySelectorAll(".multiple-choice-input-button"))
+    .map(function(el,i){return {index:i, text:getTextWithMath(el)};});
+
+  var out=JSON.stringify({latex:mainLatex, text:questionText, options:options},null,2);
+  console.log("%c EXTRACTED ","background:#00e5ff;color:#000;font-weight:bold;font-size:13px");
+  console.log(out);
+  try{copy(out);console.log("%c Copied!","color:#7fff6e");}catch(e){}
+})()</div>
+  </div>
+
+  <!-- STEP 3: PROBLEM INPUT -->
+  <div class="section">
+    <div class="sh"><div class="sn">3</div><div class="st">Problem Input</div></div>
+    <div class="lbl">Paste extracted JSON or type a problem</div>
+    <textarea id="problemInput" placeholder='Paste the JSON from the MathU console:
+{
+  "latex": "\\frac{(-5x^{2}y)(-3xy)^{2}}{15xy}",
+  "text": "Simplify with positive exponents",
+  "options": [
+    {"index":0,"text":"-3xy^5"},
+    {"index":1,"text":"-3x^3y^2"},
+    {"index":2,"text":"x^4y^3"}
+  ]
+}
+
+Or just type: Simplify (-1)^9'></textarea>
+
+    <button class="btn btn-primary" id="solveBtn" onclick="runPipeline()">⚡ SOLVE</button>
+
+    <!-- PROGRESS -->
+    <div class="progress-stages" id="progressStages">
+      <div class="prog-row" id="prog1">
+        <div class="prog-icon" id="prog1icon">⏳</div>
+        <div id="prog1text">Waiting…</div>
+      </div>
+      <div class="prog-row" id="prog2">
+        <div class="prog-icon" id="prog2icon">⏳</div>
+        <div id="prog2text">Waiting…</div>
+      </div>
+      <div class="prog-row" id="prog3">
+        <div class="prog-icon" id="prog3icon">⏳</div>
+        <div id="prog3text">Waiting…</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RESULT -->
+  <div id="result">
+    <div class="section" id="resultSection"></div>
+  </div>
+
+  <footer>OLLAMA PARSES · MATH.JS COMPUTES · 100% LOCAL · NO DATA LEAVES YOUR MACHINE</footer>
+</div>
+
+<script>
+var OLLAMA = 'http://localhost:11434';
+
+// ── OLLAMA STATUS ─────────────────────────────────────────────
+function checkOllama(userClick) {
+  var pill = document.getElementById('ollamaPill');
+  pill.className = 'ollama-pill unknown';
+  pill.textContent = '⬤ CHECKING…';
+  fetch(OLLAMA + '/api/tags', { signal: AbortSignal.timeout(3000) })
+    .then(function(r) { if (!r.ok) throw 0; return r.json(); })
+    .then(function(d) {
+      pill.className = 'ollama-pill online';
+      pill.textContent = '⬤ ONLINE';
+      document.getElementById('ollamaOffline').style.display = 'none';
+      populateModels(d.models || []);
+    })
+    .catch(function() {
+      pill.className = 'ollama-pill offline';
+      pill.textContent = '⬤ OFFLINE';
+      document.getElementById('ollamaOffline').style.display = 'block';
+      if (userClick) alert('Ollama not reachable.\n\nRun:\nsudo systemctl stop ollama\nOLLAMA_ORIGINS=* ollama serve &\n\nAnd open this page via http://localhost:3000 (not file://)');
+    });
+}
+
+function populateModels(models) {
+  var sel = document.getElementById('modelSelect');
+  sel.innerHTML = '';
+  if (!models.length) {
+    sel.innerHTML = '<option value="">No models — run: ollama pull qwen2.5-math:7b</option>';
+    return;
+  }
+  // sort math models first
+  models.sort(function(a,b){
+    var am = a.name.includes('math')||a.name.includes('qwen'), bm = b.name.includes('math')||b.name.includes('qwen');
+    if(am&&!bm) return -1; if(!am&&bm) return 1; return 0;
+  });
+  models.forEach(function(m) {
+    var o = document.createElement('option');
+    o.value = m.name; o.textContent = m.name;
+    sel.appendChild(o);
+  });
+}
+
+// ── COPY SNIPPET ──────────────────────────────────────────────
+function copySnippet(el) {
+  var hint = document.getElementById('copyHint');
+  hint.style.visibility = 'hidden';
+  var code = el.innerText.trim();
+  hint.style.visibility = '';
+  navigator.clipboard.writeText(code).then(function(){
+    hint.textContent = 'COPIED!'; hint.style.color = 'var(--accent2)';
+    setTimeout(function(){ hint.textContent = 'CLICK TO COPY'; hint.style.color = ''; }, 2000);
+  });
+}
+
+function setStage(n, state, text) {
+  var row  = document.getElementById('prog'+n);
+  var icon = document.getElementById('prog'+n+'icon');
+  var txt  = document.getElementById('prog'+n+'text');
+  row.className = 'prog-row ' + state;
+  txt.textContent = text;
+  if (state === 'running') {
+    icon.innerHTML = '<div class="spinner"></div>';
+  } else if (state === 'done') {
+    icon.textContent = '✓';
+  } else if (state === 'error') {
+    icon.textContent = '✗';
+  } else {
+    icon.textContent = '⏳';
+  }
+}
+
+// ── PARSE INPUT ───────────────────────────────────────────────
+function parseInput(raw) {
+  raw = raw.trim();
+  try { return JSON.parse(raw); } catch(e) { return { latex: null, text: raw, options: [] }; }
+}
+
+// ── STAGE 1: OLLAMA — extract structured expression ───────────
+function ollamaExtract(data, model) {
+  var latex   = data.latex || '';
+  var text    = data.text  || '';
+  var options = data.options || [];
+
+  var optsStr = options.length
+    ? '\n\nAnswer choices:\n' + options.map(function(o,i){ return String.fromCharCode(65+i)+') '+o.text; }).join('\n')
+    : '';
+
+  var prompt =
+    'You are a math expression extractor. Convert the math problem into a single math.js expression that can be computed.\n\n'
+    + 'math.js syntax rules:\n'
+    + '- Use * for multiplication (never juxtaposition: write 3*x not 3x)\n'
+    + '- Use ^ for exponents\n'
+    + '- Use / for division\n'
+    + '- Negative: use unary minus e.g. -3*x\n'
+    + '- IMPORTANT: substitute ALL known numbers from the problem text into the expression\n'
+    + '  e.g. "starts with 5 rabbits, doubles every month, after 4 months" → 5 * 2^4\n'
+    + '  e.g. "simplify 7a^0 + (7a)^0" → 7*a^0 + (7*a)^0\n'
+    + '  e.g. "simplify (-5x^2*y)(-3xy)^2 / 15xy" → (-5*x^2*y)*(-3*x*y)^2 / (15*x*y)\n'
+    + '- Only leave variables symbolic if the answer is truly algebraic (like -3*x^3*y^2)\n'
+    + '- For word problems with all numbers given: produce a purely numeric expression\n\n'
+    + (latex ? 'LaTeX: ' + latex + '\n' : '')
+    + 'Problem text: ' + text + optsStr + '\n\n'
+    + 'Respond ONLY with a raw JSON object, no markdown, starting with {:\n'
+    + '{"expression":"the math.js expression","operation":"simplify|evaluate","variables":[],"notes":"one line explanation"}';
+
+  return fetch(OLLAMA + '/api/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: model, prompt: prompt, stream: false, options: { temperature: 0.05, num_predict: 400 } })
+  })
+  .then(function(r) {
+    if (!r.ok) return r.text().then(function(t){ throw new Error('Ollama ' + r.status + ': ' + t); });
+    return r.json();
+  })
+  .then(function(res) {
+    return robustParseJSON(res.response || '');
+  });
+}
+
+// ── STAGE 2: MATH.JS — compute the answer ────────────────────
+function mathJsCompute(parsed) {
+  var expr      = parsed.expression;
+  var operation = parsed.operation || 'simplify';
+  var variables = parsed.variables || [];
+  var result, simplified;
+
+  // always try simplify first for symbolic expressions
+  try {
+    if (variables.length > 0 || operation === 'simplify' || operation === 'expand') {
+      // simplify with math.js
+      simplified = math.simplify(expr);
+      result = simplified.toString();
+      // also try to get a cleaner string
+      try { result = math.simplify(expr, {}, {exactFractions: false}).toString(); } catch(e){}
+    }
+  } catch(e) { simplified = null; }
+
+  // if simplify failed or no variables, evaluate numerically
+  if (!simplified || variables.length === 0) {
+    try {
+      var val = math.evaluate(expr);
+      // if it's a SymbolNode/expression object, convert to string
+      if (typeof val === 'object' && val.toString) {
+        result = val.toString();
+      } else {
+        result = String(math.round(val, 10));
+      }
+    } catch(e2) {
+      // last resort: return the simplified string if we have it
+      if (result) return result;
+      throw new Error('math.js could not compute: ' + expr + '\nError: ' + e2.message);
+    }
+  }
+
+  // clean up result string: replace ** with ^, clean spaces
+  result = result.replace(/\*\*/g, '^').replace(/\s+/g, ' ').trim();
+  return result;
+}
+
+// ── STAGE 3: MATCH AGAINST OPTIONS ───────────────────────────
+function matchOptions(computedResult, options) {
+  if (!options || !options.length) return { matchIndex: -1, matchText: null };
+
+  // strip everything for a bare comparison
+  var strip = function(s) {
+    return s
+      .replace(/\s+/g, '')
+      .replace(/\*\*/g, '^').replace(/\*/g, '')
+      .replace(/\\frac\{([^}]*)\}\{([^}]*)\}/g, '($1)/($2)')
+      .replace(/\^\{([^}]*)\}/g, '^$1')
+      .replace(/\{([^}]*)\}/g, '$1')
+      .replace(/\\/g, '')
+      .replace(/[()]/g, '')
+      .toLowerCase();
+  };
+
+  var computed = strip(computedResult);
+
+  // numeric value of computed result
+  var computedNum = null;
+  try {
+    var v = math.evaluate(computedResult);
+    if (typeof v === 'number') computedNum = Math.round(v * 1e9) / 1e9;
+  } catch(e) {}
+
+  for (var i = 0; i < options.length; i++) {
+    var optRaw = options[i].text || '';
+    var optStripped = strip(optRaw);
+
+    // 1. string match
+    if (computed === optStripped) return { matchIndex: i, matchText: optRaw };
+
+    // 2. numeric: evaluate option
+    if (computedNum !== null) {
+      try {
+        var cleanOpt = optRaw
+          .replace(/\\frac\{([^}]*)\}\{([^}]*)\}/g, '($1)/($2)')
+          .replace(/\^\{([^}]*)\}/g, '^($1)')
+          .replace(/\{([^}]*)\}/g, '$1')
+          .replace(/\\/g, '');
+        var optNum = math.evaluate(cleanOpt);
+        if (typeof optNum === 'number' && Math.abs(optNum - computedNum) < 1e-6) {
+          return { matchIndex: i, matchText: optRaw };
+        }
+      } catch(e) {}
+    }
+
+    // 3. symbolic: simplify(computed - option) == 0
+    try {
+      var cleanOpt2 = optRaw
+        .replace(/\\frac\{([^}]*)\}\{([^}]*)\}/g, '($1)/($2)')
+        .replace(/\^\{([^}]*)\}/g, '^($1)')
+        .replace(/\{([^}]*)\}/g, '$1')
+        .replace(/\\/g, '');
+      var diff = math.simplify('(' + computedResult + ') - (' + cleanOpt2 + ')');
+      if (diff.toString().replace(/\s/g,'') === '0') {
+        return { matchIndex: i, matchText: optRaw };
+      }
+    } catch(e) {}
+  }
+  return { matchIndex: -1, matchText: null };
+}
+
+function robustParseJSON(raw) {
+  raw = raw.trim()
+           .replace(/^```json[\r\n]*/i,'').replace(/^```[\r\n]*/,'').replace(/[\r\n]*```$/,'')
+           .trim();
+  var s = raw.indexOf('{'), e = raw.lastIndexOf('}');
+  if (s !== -1 && e > s) raw = raw.substring(s, e+1);
+  try { return JSON.parse(raw); } catch(err) {}
+  // fix trailing commas and bare newlines
+  try {
+    var fixed = raw.replace(/,(\s*[}\]])/g,'$1').replace(/([^\\])\n/g,'$1\\n');
+    return JSON.parse(fixed);
+  } catch(err2) {
+    throw new Error('Could not parse Ollama response as JSON.\nRaw: ' + raw.substring(0,300));
+  }
+}
+
+// ── MAIN PIPELINE ─────────────────────────────────────────────
+function runPipeline() {
+  var rawInput = document.getElementById('problemInput').value.trim();
+  if (!rawInput) { alert('Please enter a problem in Step 3.'); return; }
+
+  var model = document.getElementById('customModel').value.trim()
+            || document.getElementById('modelSelect').value;
+  if (!model) { alert('No model selected. Pull one: ollama pull qwen2.5-math:7b'); return; }
+
+  var btn = document.getElementById('solveBtn');
+  btn.disabled = true; btn.textContent = 'RUNNING…';
+  document.getElementById('result').style.display = 'none';
+
+  var progressEl = document.getElementById('progressStages');
+  progressEl.className = 'progress-stages active';
+  setStage(1, 'running', 'Ollama: reading problem & extracting expression…');
+  setStage(2, '', 'math.js: waiting…');
+  setStage(3, '', 'Matching options: waiting…');
+
+  var inputData = parseInput(rawInput);
+  var extracted, computed, match;
+
+  // STAGE 1 — Ollama
+  ollamaExtract(inputData, model)
+  .then(function(result) {
+    extracted = result;
+    setStage(1, 'done', 'Ollama: extracted expression → ' + (extracted.expression || '?'));
+
+    // STAGE 2 — math.js
+    setStage(2, 'running', 'math.js: computing "' + extracted.expression + '"…');
+    try {
+      computed = mathJsCompute(extracted);
+    } catch(e) {
+      setStage(2, 'error', 'math.js error: ' + e.message);
+      throw e;
+    }
+    setStage(2, 'done', 'math.js: result → ' + computed);
+
+    // STAGE 3 — match
+    setStage(3, 'running', 'Matching result against answer choices…');
+    match = matchOptions(computed, inputData.options || []);
+    if (match.matchIndex >= 0) {
+      setStage(3, 'done', 'Matched option ' + String.fromCharCode(65 + match.matchIndex) + ': ' + match.matchText);
+    } else {
+      setStage(3, 'done', 'No exact match found in options (answer: ' + computed + ')');
+    }
+
+    renderResult(extracted, computed, match, inputData.options || []);
+  })
+  .catch(function(e) {
+    setStage(1, 'error', 'Error: ' + e.message);
+    document.getElementById('result').style.display = 'block';
+    document.getElementById('resultSection').innerHTML =
+      '<div class="sh"><div class="sn" style="background:var(--warn)">!</div><div class="st">Pipeline Failed</div></div>'
+      + '<div class="error-box">' + e.message + '</div>';
+  })
+  .finally(function() {
+    btn.disabled = false; btn.textContent = '⚡ SOLVE';
+  });
+}
+
+// ── RENDER RESULT ─────────────────────────────────────────────
+// ── RENDER MATH WITH KATEX ───────────────────────────────────
+function toLatex(mathJsStr) {
+  // convert math.js output string to LaTeX via math.js parse → toTex
+  try {
+    return math.parse(mathJsStr).toTex({ parenthesis: 'auto' });
+  } catch(e) {
+    return mathJsStr; // fallback to raw string
+  }
+}
+
+function renderMath(latexStr, displayMode) {
+  try {
+    return katex.renderToString(latexStr, {
+      throwOnError: false,
+      displayMode: !!displayMode,
+      output: 'html'
+    });
+  } catch(e) {
+    return '<code>' + latexStr + '</code>';
+  }
+}
+
+function renderResult(extracted, computed, match, options) {
+  // convert computed (math.js string) to LaTeX then render with KaTeX
+  var latex = toLatex(computed);
+  var prettyAnswer = renderMath(latex, false);
+
+  var html = '<div class="sh"><div class="sn" style="background:var(--accent2);color:#000">✓</div><div class="st">Solution</div></div>';
+
+  // big answer card
+  html += '<div class="answer-card">'
+    + '<div class="answer-lbl">Final Answer</div>'
+    + '<div class="answer-val" style="font-size:2em;line-height:1.6;">' + prettyAnswer + '</div>'
+    + '</div>';
+
+  // options FIRST — most important
+  if (options && options.length) {
+    html += '<div class="lbl" style="margin-bottom:10px;">Answer Choices</div>'
+      + '<div class="options-grid">';
+    options.forEach(function(opt, i) {
+      var isMatch = i === match.matchIndex;
+      // try to render option text as math too
+      var optDisplay = opt.text || '';
+      try {
+        // if it looks like it contains math operators/exponents, render it
+        if (/[\^_{}\\]/.test(optDisplay) || /[a-zA-Z]\d/.test(optDisplay)) {
+          var optLatex = toLatex(
+            optDisplay
+              .replace(/\\frac\{([^}]*)\}\{([^}]*)\}/g,'($1)/($2)')
+              .replace(/\^\{([^}]*)\}/g,'^($1)')
+              .replace(/\{([^}]*)\}/g,'$1')
+              .replace(/\\/g,'')
+          );
+          optDisplay = renderMath(optLatex, false);
+        }
+      } catch(e) {}
+
+      html += '<div class="opt' + (isMatch ? ' match' : '') + '">'
+        + '<div class="opt-i">' + String.fromCharCode(65+i) + '</div>'
+        + '<div style="flex:1" class="opt-math">' + optDisplay + '</div>'
+        + (isMatch ? '<div style="font-size:18px;font-weight:700;margin-left:auto;">✓</div>' : '')
+        + '</div>';
+    });
+    html += '</div>';
+
+    if (match.matchIndex < 0) {
+      html += '<div style="margin-top:10px;font-size:11px;color:var(--muted);padding:10px 14px;background:var(--panel);border-radius:8px;border:1px solid var(--border);">'
+        + '⚠ Could not automatically match an option. Answer is shown above — compare manually.</div>';
+    }
+  }
+
+  // collapsible working
+  html += '<details style="margin-top:16px;">'
+    + '<summary style="font-size:11px;color:var(--muted);cursor:pointer;letter-spacing:1px;text-transform:uppercase;user-select:none;list-style:none;">▸ Show working</summary>'
+    + '<div style="margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:12px;">'
+    + '<div class="info-card"><h3>Ollama extracted expression</h3>'
+    + '<div class="expr-box">' + (extracted.expression||'—') + '</div>'
+    + (extracted.notes ? '<div style="margin-top:8px;font-size:11px;color:var(--muted)">' + extracted.notes + '</div>' : '')
+    + '</div>'
+    + '<div class="info-card"><h3>math.js raw output</h3>'
+    + '<div class="expr-box" style="color:var(--accent2)">' + computed + '</div>'
+    + '<div style="margin-top:8px;font-size:11px;color:var(--muted)">LaTeX: ' + latex + '</div>'
+    + '</div>'
+    + '</div></details>';
+
+  document.getElementById('resultSection').innerHTML = html;
+  document.getElementById('result').style.display = 'block';
+  document.getElementById('result').scrollIntoView({ behavior: 'smooth' });
+}
+
+// ── INIT ──────────────────────────────────────────────────────
+checkOllama(false);
+</script>
+</body>
+</html>
